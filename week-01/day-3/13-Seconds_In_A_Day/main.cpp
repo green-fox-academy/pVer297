@@ -9,8 +9,8 @@ int main(int argc, char* args[]) {
     // Write a program that prints the remaining seconds (as an integer) from a
     // day if the current time is represented by the variables
 
-    int remainingHours = 24-currentHours;
-    int remainingMinutes = 60-currentMinutes;
+    int remainingHours = 23-currentHours;
+    int remainingMinutes = 59-currentMinutes;
     int remainingSeconds = 60-currentSeconds;
 
     int secondsLeft = (remainingHours*3600)+(remainingMinutes*60)+remainingSeconds;
