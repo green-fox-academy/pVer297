@@ -25,14 +25,14 @@ bool isAnagram(std::string word1, std::string word2) {
     }
     int matchingLetters = 0;
     for (int i = 0; i < word1.size(); i++) { //letters of word1
-        int containsLetter = 0;
+        bool containsLetter = false;
         for (int j = 0; j < word2.size(); j++) { //letters of word2
             if(word1[i] == word2[j]){
-                containsLetter += 1;
+                containsLetter = true;
             }
         }
-        if(containsLetter >= 0){
-            matchingLetters += containsLetter;
+        if(containsLetter == true){
+            matchingLetters++;
         }
     }
     if(matchingLetters == word1.size()){
