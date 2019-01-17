@@ -41,3 +41,9 @@ bool isAnagram(std::string word1, std::string word2) {
         return false;
     }
 }
+
+/*
+ *  known bug: wrong return if the words contain the same amount of letters, has multiple same characters eg. lllia and iiila
+ *
+ *
+ */
