@@ -8,6 +8,8 @@
 
 .idea/
 
+*.cmake
+
 &YetToDo/
 
 # User-specific stuff
