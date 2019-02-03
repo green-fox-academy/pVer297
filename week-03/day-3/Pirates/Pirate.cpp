@@ -45,7 +45,7 @@ void Pirate::passOut()
     isPassedOut = true;
 }
 
-void Pirate::brawl(Pirate &anotherPirate)
+void Pirate::brawl(Pirate& anotherPirate)
 {
     if (anotherPirate.isAwake() && isAwake()) {
         int outcome = rand() % 3;
@@ -72,7 +72,7 @@ void Pirate::brawl(Pirate &anotherPirate)
 bool Pirate::isAwake()
 {
     if (isDead) {
-        std::cout << "He's dead!" << checkParrot() << std::endl;
+        std::cout << "He's dead" << checkParrot() << std::endl;
         return false;
     } else if (isPassedOut) {
         std::cout << name << " is passed out" << checkParrot() << std::endl;
@@ -80,6 +80,27 @@ bool Pirate::isAwake()
     } else {
         return true;
     }
+}
+
+bool Pirate::isAlive()
+{
+    return !isDead;
+}
+
+std::string Pirate::getState()
+{
+    if (isDead) {
+        return "He's dead";
+    } else if (isPassedOut) {
+        return "He's passed out";
+    } else {
+        return "He's feeling alright";
+    }
+}
+
+int Pirate::getDrinkLevel()
+{
+    return drinkLevel;
 }
 
 std::string Pirate::checkParrot()

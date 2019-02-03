@@ -23,12 +23,15 @@ class Pirate
     Pirate(std::string name_);
     void drinkSomeRum();
     void howItsGoingMate();
-    void brawl(Pirate &anotherPirate);
+    void brawl(Pirate& anotherPirate);
     void die();
     void passOut();
     bool isAwake();
+    bool isAlive();
     std::string checkParrot();
     std::string getName();
+    std::string getState();
+    int getDrinkLevel();
 };
 
 #endif //PIRATES_PIRATE_H

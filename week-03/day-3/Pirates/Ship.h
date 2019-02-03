@@ -12,9 +12,23 @@
 class Ship
 {
  private:
-    std::vector<Pirate> crew;
-    Pirate captain;
+    std::vector<Pirate> _crew;
+    Pirate _captain;
 
+    std::string _captainName;
+    std::string _shipName;
+
+    void lostBattle();
+    void wonBattle();
+
+ public:
+    Ship(std::string shipName, std::string captainName);
+    void fillShip();
+    void info();
+    bool battle(Ship& otherShip);
+    int countAlive();
+    int calculateScore();
+    std::string getShipName();
 };
 
 #endif //PIRATES_SHIP_H
