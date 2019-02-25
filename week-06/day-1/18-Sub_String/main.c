@@ -57,7 +57,7 @@ int main()
             break;
         case 1: puts("The shorter is substring of the longer");
             break;
-        case -1: puts("They are the same!");
+        case -1: puts("They are the same length!");
             break;
     }
     return 0;
