@@ -1,6 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+
+int getLength(char* string)
+{
+    int index = 0;
+    while (string[index])
+        index++;
+
+    return index;
+}
 
 char* toLower(char* string)
 {
@@ -15,12 +23,14 @@ char* toLower(char* string)
 
 int equalStrings(char* string1, char* string2)
 {
+    if(getLength(string1) != getLength(string2))
+        return 0;
 
     toLower(string1);
     toLower(string2);
 
     int index = 0;
-    while (string1[index] && string2[index]) {
+    while (string1[index]) {
         if (string1[index] != string2[index])
             return 0;
         index++;
@@ -35,16 +45,18 @@ int main()
     // returns 1 if the two strings are the same and 0 otherwise
     // Try to erase small and uppercase sensitivity.
 
-    puts("Please type in two words:");
+    puts("Please type in two lines:");
 
     char input1[50];
     char input2[50];
 
-    scanf("%s %s", input1, input2);
+    fgets(input1, sizeof(input1), stdin);
+    fgets(input2, sizeof(input2), stdin);
+
     if (equalStrings(input1, input2)) {
-        puts("Your strings are the same");
+        puts("Your lines are the same");
     } else {
-        puts("Your strings are not the same");
+        puts("Your lines are not the same");
     }
     return 0;
 }
