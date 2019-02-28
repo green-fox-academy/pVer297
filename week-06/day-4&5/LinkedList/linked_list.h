@@ -29,11 +29,14 @@ l_list_node_t* l_list_end(l_list_t* list);
 int l_list_isEmpty(l_list_t* list);
 
 int l_list_size(l_list_t* list);
+void l_list_clear(l_list_t* list);
 void l_list_dealloc(l_list_t* list);
 
 void l_list_push_back(l_list_t* list, int value);
 void l_list_push_front(l_list_t* list, int value);
-void l_list_insert(l_list_t* list, int value, int pos);
+void l_list_insert(l_list_t* list, int value, int index);
 
+l_list_node_t* l_list_pop_front(l_list_t* list);
+l_list_node_t* l_list_pop_back(l_list_t* list);
 
 #endif //LINKEDLIST_LINKED_LIST_H

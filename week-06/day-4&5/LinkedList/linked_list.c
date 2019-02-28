@@ -57,6 +57,9 @@ int l_list_size(l_list_t* list)
 }
 void l_list_dealloc(l_list_t* list)
 {
+    if(!list->hasData){
+        return;
+    }
     l_list_node_t* iter = list->firstNode;
     while (iter != 0) {
         l_list_node_t* nextNode = iter->nextNode;
@@ -64,6 +67,11 @@ void l_list_dealloc(l_list_t* list)
         iter = nextNode;
     }
     list->hasData = 0;
+}
+
+void l_list_clear(l_list_t* list)
+{
+    l_list_dealloc(list);
 }
 
 
@@ -126,4 +134,45 @@ void l_list_insert(l_list_t* list, int value, int index)
     newNode->nextNode = iter->nextNode;
     iter->nextNode = newNode;
 
+}
+
+////////////////////////////DELETE//////////////
+
+l_list_node_t* l_list_pop_front(l_list_t* list)
+{
+    if (!list->hasData) {
+        puts("No nodes in list!");
+        return NULL;
+    }
+    if (l_list_size(list) == 1) {
+        l_list_clear(list);
+        return NULL;
+    }
+
+    l_list_node_t* newHead = list->firstNode->nextNode;
+    free(list->firstNode);
+    list->firstNode = newHead;
+    return newHead;
+}
+
+l_list_node_t* l_list_pop_back(l_list_t* list)
+{
+    if (!list->hasData) {
+        puts("No nodes in list!");
+        return NULL;
+    }
+
+    if (l_list_size(list) == 1) {
+        l_list_clear(list);
+        return NULL;
+    }
+
+    l_list_node_t* iter = list->firstNode;
+    for (int i = 0; i < l_list_size(list) - 1; i++) {
+        iter = iter->nextNode;
+    }
+
+    free(list->lastNode);
+    list->lastNode = iter;
+    return iter;
 }
