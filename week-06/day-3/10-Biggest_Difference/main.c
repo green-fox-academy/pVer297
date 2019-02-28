@@ -125,6 +125,10 @@ int main()
     printf("The biggest difference is at %s, the difference is %d\n", diff.name, diff.difference);
     printf("The best exam result is at %s\n", bestExam(&data));
     printf("Avg: %.2f\n", resultAvg(&data));
+
     freeDataHeap(&data);
+
+    puts("Type \'e\' to exit.");
+    scanf("%*s");
     return 0;
 }
