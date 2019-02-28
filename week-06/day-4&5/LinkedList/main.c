@@ -10,6 +10,8 @@ int main()
 
     l_list_push_front(&list, 99);
 
+    l_list_insert(&list, 50, 0);
+
     l_list_print(&list);
 
     l_list_dealloc(&list);
