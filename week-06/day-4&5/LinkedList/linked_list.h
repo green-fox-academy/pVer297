@@ -41,4 +41,7 @@ void l_list_insert(l_list_t* list, int value, int index);
 l_list_node_t* l_list_pop_front(l_list_t* list);
 l_list_node_t* l_list_pop_back(l_list_t* list);
 int l_list_erase_if(l_list_t* list, int value);
+
+l_list_node_t* l_list_sort(l_list_t* list);
+void l_list_swap(l_list_node_t* first, l_list_node_t* second);
 #endif //LINKEDLIST_LINKED_LIST_H

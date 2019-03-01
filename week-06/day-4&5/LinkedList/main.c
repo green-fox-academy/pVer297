@@ -3,10 +3,10 @@
 
 int main()
 {
-    l_list_t list;
-    /*for (int i = 0; i < 5; i++) {
+    l_list_t list;/*
+    for (int i = 0; i < 5; i++) {
         l_list_push_back(&list, i * 2);
-    }*/
+    }
 
     l_list_push_front(&list, 99);
 
@@ -42,6 +42,18 @@ int main()
     puts("");
     l_list_print(&list);
 
+    l_list_dealloc(&list);
+
+    printf("\n\n\n\n");
+*/
+    for(int i = 20; i > 0; i--){
+        l_list_push_back(&list, i);
+    }
+
+    l_list_print(&list);
+    l_list_sort(&list);
+    puts("");
+    l_list_print(&list);
     l_list_dealloc(&list);
     return 0;
 }

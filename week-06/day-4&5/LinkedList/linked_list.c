@@ -82,8 +82,8 @@ l_list_node_t* l_list_search(l_list_t* list, int value)
     }
 
     l_list_node_t* iter = list->firstNode;
-    while(iter != NULL){
-        if(iter->data == value){
+    while (iter != NULL) {
+        if (iter->data == value) {
             break;
         }
         iter = iter->nextNode;
@@ -236,3 +236,26 @@ int l_list_erase_if(l_list_t* list, int value)
 }
 
 
+//////////////////////////////////////SORT//////////////////
+
+l_list_node_t* l_list_sort(l_list_t* list)
+{
+    int length = l_list_size(list);
+    for (int i = 0; i < length; i++) {
+        l_list_node_t* iter = list->firstNode;
+        for (int j = 0; j < length - 1 - i; j++) {
+            if (iter->data > iter->nextNode->data) {
+                l_list_swap(iter, iter->nextNode);
+            }
+            iter = iter->nextNode;
+        }
+    }
+    return NULL;
+}
+
+void l_list_swap(l_list_node_t* first, l_list_node_t* second)
+{
+    int temp = second->data;
+    second->data = first->data;
+    first->data = temp;
+}
