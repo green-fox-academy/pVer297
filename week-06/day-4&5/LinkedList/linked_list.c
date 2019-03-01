@@ -9,7 +9,7 @@
 void l_list_print(l_list_t* list)
 {
     if (!list->hasData) {
-        printf("Empty");
+        puts("Empty");
         return;
     }
 
@@ -57,7 +57,7 @@ int l_list_size(l_list_t* list)
 }
 void l_list_dealloc(l_list_t* list)
 {
-    if(!list->hasData){
+    if (!list->hasData) {
         return;
     }
     l_list_node_t* iter = list->firstNode;
@@ -74,6 +74,22 @@ void l_list_clear(l_list_t* list)
     l_list_dealloc(list);
 }
 
+l_list_node_t* l_list_search(l_list_t* list, int value)
+{
+    if (!list->hasData) {
+        puts("No nodes in list!");
+        return NULL;
+    }
+
+    l_list_node_t* iter = list->firstNode;
+    while(iter != NULL){
+        if(iter->data == value){
+            break;
+        }
+        iter = iter->nextNode;
+    }
+    return iter;
+}
 
 ///////////////////////////INSERT///////////////////////////////////
 
@@ -168,11 +184,55 @@ l_list_node_t* l_list_pop_back(l_list_t* list)
     }
 
     l_list_node_t* iter = list->firstNode;
-    for (int i = 0; i < l_list_size(list) - 1; i++) {
+    for (int i = 0; i < l_list_size(list) - 2; i++) {
         iter = iter->nextNode;
     }
 
     free(list->lastNode);
     list->lastNode = iter;
+    list->lastNode->nextNode = NULL;
     return iter;
 }
+
+int l_list_erase_if(l_list_t* list, int value)
+{
+    if (!list->hasData) {
+        puts("No nodes in list!");
+        return 0;
+    }
+    int initialSize = l_list_size(list);
+
+    if (initialSize == 1) {
+        l_list_clear(list);
+        return 1;
+    }
+
+    int counter = 0;
+    l_list_node_t* prevNode = NULL;
+    l_list_node_t* currentNode = list->firstNode;
+
+    while (currentNode != NULL) {
+        if (currentNode->data == value) {
+            if (prevNode != NULL) {
+                prevNode->nextNode = currentNode->nextNode;
+            } else {
+                list->firstNode = currentNode->nextNode;
+            }
+            counter++;
+            free(currentNode);
+        } else {
+            prevNode = currentNode;
+        }
+        if (prevNode == NULL) {
+            currentNode = list->firstNode;
+        } else {
+            currentNode = prevNode->nextNode;
+        }
+    }
+    if (initialSize == counter) {
+        l_list_clear(list);
+    }
+    return counter;
+}
+
+
