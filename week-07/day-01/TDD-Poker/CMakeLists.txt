@@ -1,0 +1,31 @@
+cmake_minimum_required(VERSION 3.13)
+
+# Change this to your project name
+set(PROJECT_NAME TDD_Poker)
+
+#######################################################################
+
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_C_STANDARD 11)
+
+# Change this to the name of the directory that contains your code
+set(PROJECT_LIB_NAME project_lib)
+
+# Change this to the name of the directory that contains your tests
+set(PROJECT_TESTS_NAME project_tests)
+
+# Change this to the path where you extracted the Google Test files to
+set(PATH_TO_GOOGLETEST "C:/greenfox/googletest/")
+
+project(${PROJECT_NAME})
+
+# The next line creates an executable file from main.cpp with the same name as your project
+add_executable(${PROJECT_NAME} main.c)
+
+# This block includes the subdirectories containing your code and tests
+include_directories(${PROJECT_LIB_NAME})
+add_subdirectory(${PROJECT_LIB_NAME})
+add_subdirectory(${PROJECT_TESTS_NAME})
+
+# This line links your code to the main executable
+target_link_libraries(${PROJECT_NAME} ${PROJECT_LIB_NAME})
