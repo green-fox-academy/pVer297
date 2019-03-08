@@ -8,25 +8,137 @@
 static void Error_Handler(void);
 static void SystemClock_Config(void);
 
+uint32_t screenWidth;
+uint32_t screenHeight;
+TS_StateTypeDef Touches;
+int startScreenState = 0;
+RNG_HandleTypeDef randomNumber;
+
+void init();
+void delay_w_interrupt(int wait);
+void showStartScreen();
+void updateGameState();
+void startGame();
+int getReaction();
+void showResult(int result);
+
+typedef enum
+{
+    START_SCREEN,
+    GAME,
+    END_SCREEN
+} GameState;
+
+GameState gameState;
+
 int main(void)
+{
+    init();
+    int result = 0;
+
+    while (1) {
+        if (gameState == START_SCREEN)
+            showStartScreen();
+
+        if (gameState == GAME)
+            result = getReaction();
+
+        if (gameState == END_SCREEN)
+            showResult(result);
+
+        delay_w_interrupt(1000);
+    }
+}
+
+void showResult(int result)
+{
+    BSP_LCD_Clear(LCD_COLOR_WHITE);
+    BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+    char str[5];
+    sprintf(str, "%d ms", result);
+    BSP_LCD_DisplayStringAt(0, screenHeight / 2 - LCD_DEFAULT_FONT.Height, "Your reaction time:", CENTER_MODE);
+    BSP_LCD_DisplayStringAt(0, screenHeight / 2 + LCD_DEFAULT_FONT.Height, str, CENTER_MODE);
+}
+
+int getReaction()
+{
+    BSP_LCD_Clear(LCD_COLOR_GREEN);
+    uint32_t start = HAL_GetTick();
+    while (1) {
+        BSP_TS_GetState(&Touches);
+        if (Touches.touchDetected > 0)
+            break;
+    }
+    gameState = END_SCREEN;
+    return HAL_GetTick() - start;
+}
+
+void startGame()
+{
+    BSP_LCD_Clear(LCD_COLOR_WHITE);
+    BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+    uint32_t rand = HAL_RNG_GetRandomNumber(&randomNumber) % 7 + 3;
+    for (int i = rand; i > 0; i--) {
+        char str[2];
+        sprintf(str, "%d", i);
+        BSP_LCD_DisplayStringAt(0, screenHeight / 2, str, CENTER_MODE);
+        HAL_Delay(1000);
+    }
+    gameState = GAME;
+}
+
+void updateGameState()
+{
+    switch (gameState) {
+        case START_SCREEN: startGame();
+            break;
+        case GAME: getReaction();
+            break;
+        case END_SCREEN: break;
+    }
+}
+
+void showStartScreen()
+{
+    if (startScreenState) {
+        BSP_LCD_Clear(LCD_COLOR_WHITE);
+        BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+    } else {
+        BSP_LCD_Clear(LCD_COLOR_LIGHTGREEN);
+        BSP_LCD_SetBackColor(LCD_COLOR_LIGHTGREEN);
+    }
+    BSP_LCD_DisplayStringAt(0, screenHeight / 2 - LCD_DEFAULT_FONT.Height, "Let's play!", CENTER_MODE);
+    BSP_LCD_DisplayStringAt(0, screenHeight / 2 + LCD_DEFAULT_FONT.Height, "Press here to start!", CENTER_MODE);
+    startScreenState = 1 - startScreenState;
+}
+
+void delay_w_interrupt(int wait)
+{
+    uint32_t start = HAL_GetTick();
+    uint32_t end = start + wait;
+    while (end > HAL_GetTick()) {
+        BSP_TS_GetState(&Touches);
+        if (Touches.touchEventId[0] == TOUCH_EVENT_PRESS_DOWN)
+            updateGameState();
+    }
+}
+
+void init()
 {
     HAL_Init();
     SystemClock_Config();
-
-    /* initializing LCD */
     BSP_LCD_Init();
     BSP_LCD_LayerDefaultInit(1, LCD_FB_START_ADDRESS);
     BSP_LCD_SelectLayer(1);
     BSP_LCD_SetFont(&LCD_DEFAULT_FONT);
-    BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
-    BSP_LCD_Clear(LCD_COLOR_WHITE);
 
-    /* drawing a red circle */
-    BSP_LCD_SetTextColor(LCD_COLOR_RED);
-    BSP_LCD_FillCircle(50, 50, 30);
+    randomNumber.Instance = RNG;
+    __HAL_RCC_RNG_CLK_ENABLE();
+    HAL_RNG_Init(&randomNumber);
 
-    while (1) {
-    }
+    screenWidth = BSP_LCD_GetXSize();
+    screenHeight = BSP_LCD_GetYSize();
+    BSP_TS_Init(screenWidth, screenHeight);
 }
 
 static void Error_Handler(void)
