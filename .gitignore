@@ -12,6 +12,17 @@
 
 &YetToDo/
 
+Utilities/
+startup/
+Drivers/
+Inc/
+syscalls.c
+.*
+*.ld
+*xml
+*ioc
+
+
 # User-specific stuff
 .idea/**/workspace.xml
 .idea/**/tasks.xml
