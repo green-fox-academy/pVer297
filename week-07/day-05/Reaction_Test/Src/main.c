@@ -29,7 +29,7 @@ typedef enum
     END_SCREEN
 } GameState;
 
-GameState gameState;
+GameState gameState = START_SCREEN;
 
 int main(void)
 {
@@ -66,8 +66,10 @@ int getReaction()
     uint32_t start = HAL_GetTick();
     while (1) {
         BSP_TS_GetState(&Touches);
-        if (Touches.touchDetected > 0)
+        if (Touches.touchEventId[0] == TOUCH_EVENT_PRESS_DOWN) {
+            BSP_TS_ResetTouchData(&Touches);
             break;
+        }
     }
     gameState = END_SCREEN;
     return HAL_GetTick() - start;
@@ -94,7 +96,9 @@ void updateGameState()
             break;
         case GAME: getReaction();
             break;
-        case END_SCREEN: break;
+        case END_SCREEN: gameState = START_SCREEN;
+            HAL_Delay(500);
+            break;
     }
 }
 
@@ -118,8 +122,10 @@ void delay_w_interrupt(int wait)
     uint32_t end = start + wait;
     while (end > HAL_GetTick()) {
         BSP_TS_GetState(&Touches);
-        if (Touches.touchEventId[0] == TOUCH_EVENT_PRESS_DOWN)
+        if (Touches.touchEventId[0] == TOUCH_EVENT_PRESS_DOWN) {
+            BSP_TS_ResetTouchData(&Touches);
             updateGameState();
+        }
     }
 }
 
