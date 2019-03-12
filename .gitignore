@@ -15,7 +15,6 @@
 Utilities/
 startup/
 Drivers/
-Inc/
 syscalls.c
 .*
 *.ld
