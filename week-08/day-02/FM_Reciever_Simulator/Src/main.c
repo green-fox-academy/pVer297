@@ -16,14 +16,17 @@ GPIO_InitTypeDef channelDown; //PC7
 
 UART_HandleTypeDef uart_handle;
 
-TIM_HandleTypeDef transmit_timer;
+TIM_HandleTypeDef timer;
 
-typedef enum {
+typedef enum
+{
+    FM_BAND_START = 875,
     INFO_FM = 881,
     MUSIC_FM = 895,
     JAZZY_FM = 909,
-    KLASSIC_FM = 921,
-    KLUB_FM = 929
+    CLASSIC_FM = 921,
+    CLUB_FM = 929,
+    FM_BAND_END = 1080
 } Saved_Channels;
 
 typedef struct
@@ -35,7 +38,7 @@ typedef struct
 FM_Radio_t radio = {10, 87.5};
 
 volatile uint32_t last_pressed = 0;
-int press_delay = 150;//ms
+int press_delay = 50;//ms
 
 volatile uint32_t press_start = 0;
 
@@ -47,10 +50,12 @@ void init_transmit_timer();
 void transmit_data();
 void loop_channel();
 char* getChannelName(float channel);
+float findCh(int state);
 
 int main(void)
 {
     HAL_Init();
+    SystemClock_Config();
     init_buttons();
     init_uart();
     init_transmit_timer();
@@ -83,7 +88,8 @@ void transmit_data()
     sprintf(channelData, "%.1f", radio.channel);
     sprintf(channelName, " | %s\r\n", getChannelName(radio.channel));
 
-    int outputLength = strlen(volText) + strlen(channelText) + strlen(volData) + strlen(channelData) + strlen(channelName) + 1;
+    int outputLength =
+        strlen(volText) + strlen(channelText) + strlen(volData) + strlen(channelData) + strlen(channelName) + 1;
     char string[outputLength];
 
     strcpy(string, volText);
@@ -119,49 +125,110 @@ void EXTI9_5_IRQHandler() //Channel down - 7
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
+    //check if edge is rising on button
+    int isRising = HAL_GPIO_ReadPin(GPIOA, volumeUp.Pin) ||
+        HAL_GPIO_ReadPin(GPIOC, channelDown.Pin) ||
+        HAL_GPIO_ReadPin(GPIOB, channelUp.Pin) ||
+        HAL_GPIO_ReadPin(GPIOF, volumeDown.Pin);
+
     //check if is a valid button press
     uint32_t current_time = HAL_GetTick();
-    if (current_time < last_pressed + press_delay) {
+    if (current_time < last_pressed + press_delay)
         return;
-    }
 
     last_pressed = current_time;
 
-    /* checking if the interrupt is from the correct pin */
-    if (GPIO_Pin == volumeUp.Pin && radio.volume < 100) {
-        radio.volume++;
-    } else if (GPIO_Pin == volumeDown.Pin && radio.volume > 0) {
-        radio.volume--;
-    } else if (GPIO_Pin == channelUp.Pin) {
-        radio.channel += 0.1;
-    } else if (GPIO_Pin == channelDown.Pin) {
-        radio.channel -= 0.1;
+    if (isRising) {
+        press_start = HAL_GetTick();
+        return;
+    } else {
+        uint32_t press_time = HAL_GetTick() - press_start;
+        int vol;
+        float ch;
+        if (press_time > 1000) {
+            ch = 0;
+            vol = 5;
+        } else {
+            vol = 1;
+            ch = 0.1;
+        }
+        /* checking if the interrupt is from the correct pin */
+        if (GPIO_Pin == volumeUp.Pin && radio.volume < 100) {
+            radio.volume += vol;
+        } else if (GPIO_Pin == volumeDown.Pin && radio.volume > 0) {
+            radio.volume -= vol;
+        } else if (GPIO_Pin == channelUp.Pin) {
+            if (ch == 0) {
+                radio.channel = findCh(1);
+            } else {
+                radio.channel += ch;
+            }
+        } else if (GPIO_Pin == channelDown.Pin) {
+            if (ch == 0) {
+                radio.channel = findCh(0);
+            } else {
+                radio.channel -= ch;
+            }
+        }
     }
 
     loop_channel();
     send_data = 1;
 }
 
+float findCh(int state)
+{
+    if (state == 1) {//nextCh
+        for (int i = (int) round(radio.channel * 10 + 1); i < FM_BAND_END; i++) {
+            if (strcmp(getChannelName((float) i / 10), "No signal") != 0) {
+                return (float) i / 10;
+            }
+        }
+        for (int i = FM_BAND_START; i < (int) round(radio.channel * 10 - 1); i++) {
+            if (strcmp(getChannelName((float) i / 10), "No signal") != 0) {
+                return (float) i / 10;
+            }
+        }
+    } else { //prevCh
+        for (int i = (int) round(radio.channel * 10 - 1); i > FM_BAND_START; i--) {
+            if (strcmp(getChannelName((float) i / 10), "No signal") != 0) {
+                return (float) i / 10;
+            }
+        }
+        for (int i = FM_BAND_END; i > (int) round(radio.channel * 10 + 1); i--) {
+            if (strcmp(getChannelName((float) i / 10), "No signal") != 0) {
+                return (float) i / 10;
+            }
+        }
+
+    }
+    return 0;
+}
+
 void TIM2_IRQHandler()
 {
-    HAL_TIM_IRQHandler(&transmit_timer);
+    HAL_TIM_IRQHandler(&timer);
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
 {
     if (htim->Instance == TIM2) {
+        char string[50] = "";
+        sprintf(string, "%lu\n", HAL_GetTick());
 
+        HAL_UART_Transmit(&uart_handle, (uint8_t*) string, strlen(string), 0xFFFF);
     }
 }
 
-char* getChannelName(float channel){
-    int channelInt = (int)round(channel*10);
-    switch(channelInt){
+char* getChannelName(float channel)
+{
+    int channelInt = (int) round(channel * 10);
+    switch (channelInt) {
         case INFO_FM: return "Info FM";
         case MUSIC_FM: return "Music FM";
         case JAZZY_FM: return "Jazzy FM";
-        case KLASSIC_FM: return "Classic FM";
-        case KLUB_FM: return "Club FM";
+        case CLASSIC_FM: return "Classic FM";
+        case CLUB_FM: return "Club FM";
         default: return "No signal";
     }
 }
@@ -189,9 +256,9 @@ void init_buttons()
     channelUp.Speed = GPIO_SPEED_FAST;
     channelDown.Speed = GPIO_SPEED_FAST;
 
-    volumeUp.Mode = GPIO_MODE_IT_RISING;
-    volumeDown.Mode = GPIO_MODE_IT_RISING;
-    channelUp.Mode = GPIO_MODE_IT_RISING;
+    volumeUp.Mode = GPIO_MODE_IT_RISING_FALLING;
+    volumeDown.Mode = GPIO_MODE_IT_RISING_FALLING;
+    channelUp.Mode = GPIO_MODE_IT_RISING_FALLING;
     channelDown.Mode = GPIO_MODE_IT_RISING_FALLING;
 
     HAL_GPIO_Init(GPIOA, &volumeUp);
@@ -232,13 +299,13 @@ void init_transmit_timer()
 {
     __HAL_RCC_TIM2_CLK_ENABLE();
 
-    transmit_timer.Instance = TIM2;
-    transmit_timer.Init.Prescaler = 54000;
-    transmit_timer.Init.Period = 2000;
-    transmit_timer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    transmit_timer.Init.CounterMode = TIM_COUNTERMODE_UP;
+    timer.Instance = TIM2;
+    timer.Init.Prescaler = 10800 - 1;
+    timer.Init.Period = 10000 - 1;
+    timer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    timer.Init.CounterMode = TIM_COUNTERMODE_UP;
 
-    HAL_TIM_Base_Init(&transmit_timer);
+    HAL_TIM_Base_Init(&timer);
 
     HAL_NVIC_SetPriority(TIM2_IRQn, TIMER_PRIORITY, 0);
     HAL_NVIC_EnableIRQ(TIM2_IRQn);

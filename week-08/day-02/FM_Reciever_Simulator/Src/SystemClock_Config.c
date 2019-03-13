@@ -1,10 +1,10 @@
 #include "SystemClock_Config.h"
 
-static void Error_Handler(void)
+void Error_Handler(void)
 {
 }
 
-static void SystemClock_Config(void)
+void SystemClock_Config(void)
 {
     RCC_OscInitTypeDef RCC_OscInitStruct =
         { 0 };
