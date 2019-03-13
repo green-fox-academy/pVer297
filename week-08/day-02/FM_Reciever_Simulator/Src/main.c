@@ -1,4 +1,5 @@
 #include <string.h>
+#include <math.h>
 #include "stm32f7xx.h"
 #include "stm32746g_discovery.h"
 #include "SystemClock_Config.h"
@@ -17,6 +18,14 @@ UART_HandleTypeDef uart_handle;
 
 TIM_HandleTypeDef transmit_timer;
 
+typedef enum {
+    INFO_FM = 881,
+    MUSIC_FM = 895,
+    JAZZY_FM = 909,
+    KLASSIC_FM = 921,
+    KLUB_FM = 929
+} Saved_Channels;
+
 typedef struct
 {
     int volume;
@@ -24,16 +33,20 @@ typedef struct
 } FM_Radio_t;
 
 FM_Radio_t radio = {10, 87.5};
+
 volatile uint32_t last_pressed = 0;
 int press_delay = 150;//ms
 
-short send_data = 1;
+volatile uint32_t press_start = 0;
+
+short send_data = 0;
 
 void init_buttons();
 void init_uart();
 void init_transmit_timer();
 void transmit_data();
 void loop_channel();
+char* getChannelName(float channel);
 
 int main(void)
 {
@@ -43,18 +56,17 @@ int main(void)
     init_transmit_timer();
     while (1) {
         if (send_data) {
-            loop_channel();
             transmit_data();
         }
-        HAL_Delay(1000);
     }
 }
 
-void loop_channel(){
-    if(radio.channel > 108){
+void loop_channel()
+{
+    if (radio.channel > 108) {
         radio.channel = 87.5;
     }
-    if(radio.channel < 87.5){
+    if (radio.channel < 87.5) {
         radio.channel = 108.0;
     }
 }
@@ -64,21 +76,24 @@ void transmit_data()
     char volText[] = "Volume: ";
     char channelText[] = " | Channel: ";
     char volData[4] = "";
-    char channelData[8] = "";
+    char channelData[6] = "";
+    char channelName[20] = "";
 
     sprintf(volData, "%d", radio.volume);
-    sprintf(channelData, "%.1f\r\n", radio.channel);
+    sprintf(channelData, "%.1f", radio.channel);
+    sprintf(channelName, " | %s\r\n", getChannelName(radio.channel));
 
-    int outputLength = strlen(volText) + strlen(channelText) + strlen(volData) + strlen(channelData) + 1;
+    int outputLength = strlen(volText) + strlen(channelText) + strlen(volData) + strlen(channelData) + strlen(channelName) + 1;
     char string[outputLength];
 
     strcpy(string, volText);
     strcat(string, volData);
     strcat(string, channelText);
     strcat(string, channelData);
+    strcat(string, channelName);
 
-    HAL_UART_Transmit(&uart_handle, (uint8_t*) string, outputLength - 1, 0xFFFF);
-    send_data = 1;
+    HAL_UART_Transmit(&uart_handle, (uint8_t*) string, strlen(string), 0xFFFF);
+    send_data = 0;
 }
 
 void EXTI0_IRQHandler() //Volume up - 0
@@ -113,15 +128,18 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     last_pressed = current_time;
 
     /* checking if the interrupt is from the correct pin */
-    if (GPIO_Pin == volumeUp.Pin) {
+    if (GPIO_Pin == volumeUp.Pin && radio.volume < 100) {
         radio.volume++;
-    } else if (GPIO_Pin == volumeDown.Pin) {
+    } else if (GPIO_Pin == volumeDown.Pin && radio.volume > 0) {
         radio.volume--;
     } else if (GPIO_Pin == channelUp.Pin) {
         radio.channel += 0.1;
     } else if (GPIO_Pin == channelDown.Pin) {
         radio.channel -= 0.1;
     }
+
+    loop_channel();
+    send_data = 1;
 }
 
 void TIM2_IRQHandler()
@@ -133,6 +151,18 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
 {
     if (htim->Instance == TIM2) {
 
+    }
+}
+
+char* getChannelName(float channel){
+    int channelInt = (int)round(channel*10);
+    switch(channelInt){
+        case INFO_FM: return "Info FM";
+        case MUSIC_FM: return "Music FM";
+        case JAZZY_FM: return "Jazzy FM";
+        case KLASSIC_FM: return "Classic FM";
+        case KLUB_FM: return "Club FM";
+        default: return "No signal";
     }
 }
 
@@ -162,7 +192,7 @@ void init_buttons()
     volumeUp.Mode = GPIO_MODE_IT_RISING;
     volumeDown.Mode = GPIO_MODE_IT_RISING;
     channelUp.Mode = GPIO_MODE_IT_RISING;
-    channelDown.Mode = GPIO_MODE_IT_RISING;
+    channelDown.Mode = GPIO_MODE_IT_RISING_FALLING;
 
     HAL_GPIO_Init(GPIOA, &volumeUp);
     HAL_GPIO_Init(GPIOB, &channelUp);
