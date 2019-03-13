@@ -7,7 +7,6 @@
 /* smaller the number higher the priority */
 
 #define BUTTON_PRIORITY 2
-#define TIMER_PRIORITY 4
 
 GPIO_InitTypeDef volumeUp; //PA0
 GPIO_InitTypeDef volumeDown; //PF10
@@ -15,8 +14,6 @@ GPIO_InitTypeDef channelUp; //PB4
 GPIO_InitTypeDef channelDown; //PC7
 
 UART_HandleTypeDef uart_handle;
-
-TIM_HandleTypeDef timer;
 
 typedef enum
 {
@@ -46,7 +43,6 @@ short send_data = 0;
 
 void init_buttons();
 void init_uart();
-void init_transmit_timer();
 void transmit_data();
 void loop_channel();
 char* getChannelName(float channel);
@@ -58,7 +54,6 @@ int main(void)
     SystemClock_Config();
     init_buttons();
     init_uart();
-    init_transmit_timer();
     while (1) {
         if (send_data) {
             transmit_data();
@@ -205,21 +200,6 @@ float findCh(int state)
     return 0;
 }
 
-void TIM2_IRQHandler()
-{
-    HAL_TIM_IRQHandler(&timer);
-}
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
-{
-    if (htim->Instance == TIM2) {
-        char string[50] = "";
-        sprintf(string, "%lu\n", HAL_GetTick());
-
-        HAL_UART_Transmit(&uart_handle, (uint8_t*) string, strlen(string), 0xFFFF);
-    }
-}
-
 char* getChannelName(float channel)
 {
     int channelInt = (int) round(channel * 10);
@@ -293,20 +273,4 @@ void init_uart()
     uart_handle.Init.Mode = UART_MODE_TX;
 
     BSP_COM_Init(COM1, &uart_handle);
-}
-
-void init_transmit_timer()
-{
-    __HAL_RCC_TIM2_CLK_ENABLE();
-
-    timer.Instance = TIM2;
-    timer.Init.Prescaler = 10800 - 1;
-    timer.Init.Period = 10000 - 1;
-    timer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    timer.Init.CounterMode = TIM_COUNTERMODE_UP;
-
-    HAL_TIM_Base_Init(&timer);
-
-    HAL_NVIC_SetPriority(TIM2_IRQn, TIMER_PRIORITY, 0);
-    HAL_NVIC_EnableIRQ(TIM2_IRQn);
 }
