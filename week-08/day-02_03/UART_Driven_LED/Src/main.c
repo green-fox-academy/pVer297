@@ -12,12 +12,10 @@ UART_HandleTypeDef uart_handle;
 #define BUFFER_SIZE 10
 char user_input[BUFFER_SIZE] = "";
 char currentChar;
-short compareFlag = 0;
 
 void init_timer();
 void init_ext_led();
 void init_uart();
-void compare_data();
 
 int main(void)
 {
@@ -28,30 +26,9 @@ int main(void)
     init_uart();
     BSP_LED_Init(LED1);
 
-    HAL_UART_Receive_IT(&uart_handle, user_input, BUFFER_SIZE);
+    HAL_UART_Receive_IT(&uart_handle, &currentChar, 1);
     while (1) {
-        if (compareFlag) {
-            compare_data();
-        }
     }
-}
-
-void compare_data()
-{
-    if (strcmp(user_input, "flash\r\n") == 0) {
-        HAL_TIM_Base_Start_IT(&timer);
-    } else if (strcmp(user_input, "on\r\n") == 0) {
-        HAL_TIM_Base_Stop_IT(&timer);
-        HAL_GPIO_WritePin(GPIOF, LED.Pin, 1);
-    } else if (strcmp(user_input, "off\r\n") == 0) {
-        HAL_TIM_Base_Stop_IT(&timer);
-        HAL_GPIO_WritePin(GPIOF, LED.Pin, 0);
-    }
-
-    HAL_UART_Transmit(&uart_handle, (uint8_t*) user_input, strlen(user_input), 0xFFFF);
-    memset(user_input, '\0', BUFFER_SIZE);
-    compareFlag = 0;
-    HAL_UART_Receive_IT(&uart_handle, user_input, BUFFER_SIZE);
 }
 
 void TIM2_IRQHandler()
@@ -78,7 +55,26 @@ void USART1_IRQHandler()
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart)
 {
     if (huart->Instance == USART1) {
-        compareFlag = 1;
+        if (currentChar != '\n' && currentChar != '\r' && (strlen(user_input) + 1) < BUFFER_SIZE) {
+            strcat(user_input, &currentChar);
+        } else {
+            if (strcmp(user_input, "flash") == 0) {
+                HAL_TIM_Base_Start_IT(&timer);
+                memset(user_input, '\0', BUFFER_SIZE);
+            } else if (strcmp(user_input, "on") == 0) {
+                HAL_TIM_Base_Stop_IT(&timer);
+                HAL_GPIO_WritePin(GPIOF, LED.Pin, 1);
+                memset(user_input, '\0', BUFFER_SIZE);
+            } else if (strcmp(user_input, "off") == 0) {
+                HAL_TIM_Base_Stop_IT(&timer);
+                HAL_GPIO_WritePin(GPIOF, LED.Pin, 0);
+                memset(user_input, '\0', BUFFER_SIZE);
+            } else {
+                memset(user_input, '\0', BUFFER_SIZE);
+            }
+        }
+
+        HAL_UART_Receive_IT(&uart_handle, &currentChar, 1);
     }
 }
 
@@ -100,7 +96,7 @@ void init_timer()
 /* Enable interrupt handler */
 
     HAL_NVIC_EnableIRQ(TIM2_IRQn);
-    //HAL_TIM_Base_Start_IT(&timer);
+    HAL_TIM_Base_Start_IT(&timer);
 }
 
 void init_ext_led()
@@ -124,7 +120,7 @@ void init_uart()
     uart_handle.Init.StopBits = UART_STOPBITS_1;
     uart_handle.Init.Parity = UART_PARITY_NONE;
     uart_handle.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-    uart_handle.Init.Mode = UART_MODE_TX_RX;
+    uart_handle.Init.Mode = UART_MODE_RX;
 
     BSP_COM_Init(COM1, &uart_handle);
 
