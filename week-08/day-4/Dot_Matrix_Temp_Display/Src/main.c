@@ -8,7 +8,8 @@ I2C_HandleTypeDef I2C_handle;
 GPIO_InitTypeDef SCL_SDA_config;
 UART_HandleTypeDef uart_handle;
 
-TIM_HandleTypeDef timer;
+TIM_HandleTypeDef read_timer;
+TIM_HandleTypeDef display_timer;
 
 #define TEMP_SENSOR_ADDRESS (0b1001000 << 1)
 #define LED_MATRIX_ADDRESS  (0b1110000 << 1)
@@ -19,10 +20,17 @@ uint8_t temp_sensor_val;
 uint8_t system_setup_reg = 0x21;
 uint8_t set_reg = 0xA0;
 uint8_t display_set_reg = 0x81;
+
+volatile int read_temp_flag = 0;
+volatile int next_display_flag = 0;
+
+int display_index = 0;
+
 void i2c_init();
 void uart_init();
 void timer_init();
 void fix_bits(uint8_t data[][8], int arraySize);
+void parse_digits(int holderArray[], int number, int arraySize);
 
 int main(void)
 {
@@ -30,7 +38,7 @@ int main(void)
     SystemClock_Config();
     i2c_init();
     uart_init();
-    //timer_init();
+    timer_init();
 
     uint8_t led_numbers[][8] =
         {{0x00, 0x00, 0x7e, 0x81, 0x81, 0x81, 0x7e, 0x00}, //0
@@ -44,34 +52,47 @@ int main(void)
          {0x00, 0x00, 0x6e, 0x91, 0x91, 0x91, 0x6e, 0x00}, //8
          {0x00, 0x00, 0x72, 0x89, 0x89, 0x89, 0x7e, 0x00}, //9
          {0x00, 0xc0, 0xc0, 0x1e, 0x21, 0x21, 0x21, 0x00}}; //°c
-
     fix_bits(led_numbers, 11);
 
     HAL_I2C_Master_Transmit(&I2C_handle, LED_MATRIX_ADDRESS, &system_setup_reg, sizeof(system_setup_reg), 100);
     HAL_I2C_Master_Transmit(&I2C_handle, LED_MATRIX_ADDRESS, &set_reg, sizeof(set_reg), 100);
     HAL_I2C_Master_Transmit(&I2C_handle, LED_MATRIX_ADDRESS, &display_set_reg, sizeof(display_set_reg), 100);
 
-    int j = 0;
+    int temperature_digits[3] = {0};
+
     while (1) {
-        for (int i = 0; i < 8; i++) {
-            HAL_I2C_Mem_Write(&I2C_handle, LED_MATRIX_ADDRESS, i*2, sizeof(uint8_t), &led_numbers[j][i], 1, 100);
+
+        if (read_temp_flag) {
+            HAL_I2C_Mem_Read(&I2C_handle,
+                             TEMP_SENSOR_ADDRESS,
+                             temp_sensor_reg,
+                             I2C_MEMADD_SIZE_8BIT,
+                             &temp_sensor_val,
+                             sizeof(temp_sensor_val),
+                             100);
+            parse_digits(temperature_digits, temp_sensor_val, 3);
+            read_temp_flag = 0;
+            char string[5];
+            sprintf(string, "%d\n", temp_sensor_val);
+            HAL_UART_Transmit(&uart_handle, string, strlen(string), 0xFFFF);
         }
-
-        HAL_I2C_Mem_Read(&I2C_handle,
-                         TEMP_SENSOR_ADDRESS,
-                         temp_sensor_reg,
-                         I2C_MEMADD_SIZE_8BIT,
-                         &temp_sensor_val,
-                         sizeof(temp_sensor_val),
-                         100);
-        char string[5];
-        sprintf(string, "%d\n", temp_sensor_val);
-        HAL_UART_Transmit(&uart_handle, string, strlen(string), 0xFFFF);
-
-        j++;
-        if(j > 10)
-            j = 0;
-        HAL_Delay(1000);
+        if (next_display_flag) {
+            for (int i = 0; i < 8; i++) {
+                int numberToShow = temperature_digits[display_index];
+                HAL_I2C_Mem_Write(&I2C_handle,
+                                  LED_MATRIX_ADDRESS,
+                                  i * 2,
+                                  sizeof(uint8_t),
+                                  &led_numbers[numberToShow][i],
+                                  1,
+                                  100);
+            }
+            display_index++;
+            if (display_index > 2) {
+                display_index = 0;
+            }
+            next_display_flag = 0;
+        }
     }
 }
 
@@ -84,6 +105,18 @@ void fix_bits(uint8_t data[][8], int arraySize)
             data[i][j] = data[i][j] >> 1;
             data[i][j] |= LSB;
         }
+    }
+}
+
+void parse_digits(int holderArray[], int number, int arraySize)
+{
+    int i = arraySize - 1;
+    holderArray[i] = 10;
+    i--;
+    while (number) {
+        holderArray[i] = number % 10;
+        number /= 10;
+        i--;
     }
 }
 
@@ -126,20 +159,54 @@ void timer_init()
 {
 //TIM2-TIM3 general purpose timers
     __HAL_RCC_TIM2_CLK_ENABLE();
-    timer.Instance = TIM2;
-    timer.Init.Prescaler = 5400 - 1; //0.5ms
-    timer.Init.Period = 10000 - 1; //0.5s
-    timer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    timer.Init.CounterMode = TIM_COUNTERMODE_UP;
+    __HAL_RCC_TIM3_CLK_ENABLE();
 
-    HAL_TIM_Base_Init(&timer);
+    read_timer.Instance = TIM2;
+    display_timer.Instance = TIM3;
+    read_timer.Init.Prescaler = 10800 - 1; //0.1ms
+    display_timer.Init.Prescaler = 10800 - 1;
+    read_timer.Init.Period = 20000 - 1; //2s
+    display_timer.Init.Period = 6667 - 1;
+    read_timer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    display_timer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    read_timer.Init.CounterMode = TIM_COUNTERMODE_UP;
+    display_timer.Init.CounterMode = TIM_COUNTERMODE_UP;
+
+    HAL_TIM_Base_Init(&read_timer);
+    HAL_TIM_Base_Init(&display_timer);
 
 /* Assign priority to interrupt line 15 lowest 0 highest */
     HAL_NVIC_SetPriority(TIM2_IRQn, 4, 0);
+    HAL_NVIC_SetPriority(TIM3_IRQn, 4, 0);
 
 /* Enable interrupt handler */
 
     HAL_NVIC_EnableIRQ(TIM2_IRQn);
+    HAL_NVIC_EnableIRQ(TIM3_IRQn);
 
-    HAL_TIM_Base_Start_IT(&timer);
+    HAL_TIM_Base_Start_IT(&read_timer);
+    HAL_TIM_Base_Start_IT(&display_timer);
+}
+
+void TIM2_IRQHandler()
+{
+    /* saving the current frame and executing the interrupt callback */
+    HAL_TIM_IRQHandler(&read_timer);
+}
+
+void TIM3_IRQHandler()
+{
+    /* saving the current frame and executing the interrupt callback */
+    HAL_TIM_IRQHandler(&display_timer);
+}
+
+/* interrupt callback*/
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+{
+    /* checking if the catched timer is the one we want to work with */
+    if (htim->Instance == TIM2) {
+        read_temp_flag = 1;
+    } else if (htim->Instance == TIM3) {
+        next_display_flag = 1;
+    }
 }
