@@ -30,6 +30,7 @@ uint8_t display_set_reg = 0x81;
 
 volatile int read_temp_flag = 0;
 volatile int next_display_flag = 0;
+volatile int dim = 0;
 
 void i2c_init();
 void fix_bits(uint8_t data[][8], int arraySize);
@@ -57,6 +58,7 @@ int main(void)
     SystemClock_Config();
     i2c_init();
     timer_init();
+    BSP_PB_Init(BUTTON_KEY, BUTTON_MODE_EXTI);
 
     fix_bits(led_numbers, 11);
 
@@ -96,6 +98,10 @@ int main(void)
                 offset = 0;
             }
             next_display_flag = 0;
+
+            uint8_t address = 0b11100000;
+            address |= dim;
+            HAL_I2C_Master_Transmit(&I2C_handle, LED_MATRIX_ADDRESS, &address, sizeof(display_set_reg), 100);
         }
     }
 }
@@ -211,5 +217,21 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
         read_temp_flag = 1;
     } else if (htim->Instance == TIM3) {
         next_display_flag = 1;
+    }
+}
+
+void EXTI15_10_IRQHandler()
+{
+    //interrupt managment and callback
+    HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_11);
+}
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    /* checking if the interrupt is from the correct pin */
+    if(GPIO_Pin == GPIO_PIN_11){
+        //do something
+        dim++;
+        if(dim > 16)
+            dim = 0;
     }
 }
