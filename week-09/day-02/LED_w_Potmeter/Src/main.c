@@ -16,12 +16,16 @@ TIM_HandleTypeDef FLASH_timer;
 
 GPIO_InitTypeDef LED;
 
-typedef enum {
+typedef enum
+{
     BRIGHTNESS,
     FREQUENCY
-} state_e;
+} POT_Mode;
 
-int adc_val;
+POT_Mode pot_mode = BRIGHTNESS;
+
+int bright_val = 0;
+int interp_freq_val = 100;
 int led_on = 1;
 
 double lerp(double numToMap, double numMinVal, double numMaxVal, double targetMinVal, double targetMaxVal)
@@ -45,19 +49,23 @@ int main(void)
     BSP_PB_Init(BUTTON_KEY, BUTTON_MODE_EXTI); //User button w/ interrupt mode
 
     while (1) {
-        HAL_Delay(500);
+        //HAL_Delay(500);
         HAL_ADC_Start(&adc_handle);
-        if (HAL_ADC_PollForConversion(&adc_handle, 10) == HAL_OK && led_on) {
-            adc_val = HAL_ADC_GetValue(&adc_handle);
-            adc_val = (int) lerp(adc_val, 0, 4095, 0, 100);
-            char string[10];
-            sprintf(string, "%d\n", adc_val);
-            HAL_UART_Transmit(&UartHandle, string, strlen(string), 0xFFFF);
-            __HAL_TIM_SET_COMPARE(&PWM_timer, TIM_CHANNEL_1, adc_val);
+
+        if (HAL_ADC_PollForConversion(&adc_handle, 10) == HAL_OK) {
+            if (pot_mode == BRIGHTNESS) {
+                bright_val = HAL_ADC_GetValue(&adc_handle);
+                bright_val = (int) lerp(bright_val, 0, 4095, 0, 100);
+            } else if (pot_mode == FREQUENCY) {
+                int freq_val = HAL_ADC_GetValue(&adc_handle);
+                interp_freq_val = (int) lerp(freq_val, 0, 4095, 1000, 20000);
+            }
+        }
+        if (led_on) {
+            __HAL_TIM_SET_COMPARE(&PWM_timer, TIM_CHANNEL_1, bright_val);
         } else {
             __HAL_TIM_SET_COMPARE(&PWM_timer, TIM_CHANNEL_1, 0);
         }
-
     }
 }
 
@@ -107,8 +115,8 @@ void timer_init()
 {
     __HAL_RCC_TIM2_CLK_ENABLE();
     PWM_timer.Instance = TIM2;
-    PWM_timer.Init.Prescaler = 108 - 1;    /* 108000000/108=1000000 -> speed of 1 count-up: 1/1000000 s = 0.001 ms */
-    PWM_timer.Init.Period = 100 - 1;    /* 100 x 0.001 ms = 10 ms = 0.01 s period */
+    PWM_timer.Init.Prescaler = 108 - 1;
+    PWM_timer.Init.Period = 100 - 1;
     PWM_timer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     PWM_timer.Init.CounterMode = TIM_COUNTERMODE_UP;
 
@@ -145,7 +153,12 @@ void EXTI15_10_IRQHandler()
 }
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if(GPIO_Pin == GPIO_PIN_11){
+    if (GPIO_Pin == GPIO_PIN_11) {
+        if (pot_mode == BRIGHTNESS) {
+            pot_mode = FREQUENCY;
+        } else {
+            pot_mode = BRIGHTNESS;
+        }
     }
 }
 
@@ -155,9 +168,11 @@ void TIM3_IRQHandler()
 }
 
 /* interrupt callback*/
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
 {
-    if (htim->Instance == TIM3){
+    if (htim->Instance == TIM3) {
         led_on = 1 - led_on;
+        if (pot_mode == FREQUENCY)
+            __HAL_TIM_SET_AUTORELOAD(&FLASH_timer, interp_freq_val);
     }
 }
