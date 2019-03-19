@@ -9,11 +9,20 @@ GPIO_InitTypeDef gpio_adc_pin;
 ADC_HandleTypeDef adc_handle;
 ADC_ChannelConfTypeDef adc_channel_config;
 
-TIM_HandleTypeDef TimHandle;
+TIM_HandleTypeDef PWM_timer;
 TIM_OC_InitTypeDef sConfig;
+
+TIM_HandleTypeDef FLASH_timer;
+
 GPIO_InitTypeDef LED;
 
+typedef enum {
+    BRIGHTNESS,
+    FREQUENCY
+} state_e;
+
 int adc_val;
+int led_on = 1;
 
 double lerp(double numToMap, double numMinVal, double numMaxVal, double targetMinVal, double targetMaxVal)
 {
@@ -33,18 +42,22 @@ int main(void)
     adc_init();
     led_init();
     timer_init();
+    BSP_PB_Init(BUTTON_KEY, BUTTON_MODE_EXTI); //User button w/ interrupt mode
 
     while (1) {
         HAL_Delay(500);
         HAL_ADC_Start(&adc_handle);
-        if (HAL_ADC_PollForConversion(&adc_handle, 10) == HAL_OK) {
+        if (HAL_ADC_PollForConversion(&adc_handle, 10) == HAL_OK && led_on) {
             adc_val = HAL_ADC_GetValue(&adc_handle);
             adc_val = (int) lerp(adc_val, 0, 4095, 0, 100);
             char string[10];
             sprintf(string, "%d\n", adc_val);
             HAL_UART_Transmit(&UartHandle, string, strlen(string), 0xFFFF);
+            __HAL_TIM_SET_COMPARE(&PWM_timer, TIM_CHANNEL_1, adc_val);
+        } else {
+            __HAL_TIM_SET_COMPARE(&PWM_timer, TIM_CHANNEL_1, 0);
         }
-        __HAL_TIM_SET_COMPARE(&TimHandle, TIM_CHANNEL_1, adc_val);
+
     }
 }
 
@@ -93,13 +106,13 @@ void led_init()
 void timer_init()
 {
     __HAL_RCC_TIM2_CLK_ENABLE();
-    TimHandle.Instance = TIM2;
-    TimHandle.Init.Prescaler = 108 - 1;    /* 108000000/108=1000000 -> speed of 1 count-up: 1/1000000 s = 0.001 ms */
-    TimHandle.Init.Period = 100 - 1;    /* 100 x 0.001 ms = 10 ms = 0.01 s period */
-    TimHandle.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    TimHandle.Init.CounterMode = TIM_COUNTERMODE_UP;
+    PWM_timer.Instance = TIM2;
+    PWM_timer.Init.Prescaler = 108 - 1;    /* 108000000/108=1000000 -> speed of 1 count-up: 1/1000000 s = 0.001 ms */
+    PWM_timer.Init.Period = 100 - 1;    /* 100 x 0.001 ms = 10 ms = 0.01 s period */
+    PWM_timer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    PWM_timer.Init.CounterMode = TIM_COUNTERMODE_UP;
 
-    HAL_TIM_PWM_Init(&TimHandle);
+    HAL_TIM_PWM_Init(&PWM_timer);
 
     sConfig.Pulse = 50;
 
@@ -107,7 +120,44 @@ void timer_init()
     sConfig.OCPolarity = TIM_OCPOLARITY_HIGH;
     sConfig.OCFastMode = TIM_OCFAST_ENABLE;
 
-    HAL_TIM_PWM_ConfigChannel(&TimHandle, &sConfig, TIM_CHANNEL_1);
+    HAL_TIM_PWM_ConfigChannel(&PWM_timer, &sConfig, TIM_CHANNEL_1);
 
-    HAL_TIM_PWM_Start(&TimHandle, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&PWM_timer, TIM_CHANNEL_1);
+
+    __HAL_RCC_TIM3_CLK_ENABLE();
+    FLASH_timer.Instance = TIM3;
+    FLASH_timer.Init.Prescaler = 10800 - 1; //0.1ms
+    FLASH_timer.Init.Period = 1000 - 1; //100ms
+    FLASH_timer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    FLASH_timer.Init.CounterMode = TIM_COUNTERMODE_UP;
+
+    HAL_TIM_Base_Init(&FLASH_timer);
+
+    HAL_NVIC_SetPriority(TIM3_IRQn, 4, 0);
+    HAL_NVIC_EnableIRQ(TIM3_IRQn);
+
+    HAL_TIM_Base_Start_IT(&FLASH_timer);
+}
+
+void EXTI15_10_IRQHandler()
+{
+    HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_11); //BSP PB PIN
+}
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if(GPIO_Pin == GPIO_PIN_11){
+    }
+}
+
+void TIM3_IRQHandler()
+{
+    HAL_TIM_IRQHandler(&FLASH_timer);
+}
+
+/* interrupt callback*/
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM3){
+        led_on = 1 - led_on;
+    }
 }
