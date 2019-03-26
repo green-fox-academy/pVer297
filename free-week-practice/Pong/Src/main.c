@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "stm32f7xx.h"
 #include "stm32746g_discovery.h"
 #include "SystemClock_Config.h"
@@ -50,6 +51,8 @@ void limit_ball(ball_t* ball);
 void move_ball(ball_t* ball);
 void reset_ball(ball_t* ball);
 
+int check_collision(const ball_t* ball, const paddle_t* paddle);
+
 ball_t create_ball(uint16_t x_pos, uint16_t y_pos, int x_speed, int y_speed, uint8_t radius, uint32_t color);
 paddle_t create_paddle(uint16_t x_pos, uint16_t y_pos, int speed, uint16_t width, uint16_t height, uint32_t color);
 
@@ -63,14 +66,23 @@ int main(void)
     init_rng();
 
     ball_t Ball = create_ball(screen_width / 2, screen_height / 2, 5, 5, 7, LCD_COLOR_BLACK);
-    paddle_t left_paddle = create_paddle(5, screen_height / 2 - 25, 4, 10, 50, LCD_COLOR_BLACK);
-    paddle_t right_paddle = create_paddle(screen_width - 15, screen_height / 2 - 25, 4, 10, 50, LCD_COLOR_BLACK);
+    paddle_t left_paddle = create_paddle(10, screen_height / 2 - 25, 4, 7, 75, LCD_COLOR_BLACK);
+    paddle_t right_paddle = create_paddle(screen_width - 10 - 7, screen_height / 2 - 25, 4, 7, 75, LCD_COLOR_BLACK);
 
     reset_ball(&Ball);
     while (1) {
         BSP_LCD_Clear(LCD_COLOR_WHITE);
         draw_divider();
         move_ball(&Ball);
+
+        if (Ball.speed.x_speed > 0) {
+            if (check_collision(&Ball, &right_paddle))
+                Ball.speed.x_speed = -Ball.speed.x_speed;
+        } else {
+            if (check_collision(&Ball, &left_paddle))
+                Ball.speed.x_speed = -Ball.speed.x_speed;
+        }
+
         draw_ball(&Ball);
 
         draw_paddle(&left_paddle);
@@ -193,4 +205,27 @@ void draw_paddle(const paddle_t* paddle)
 {
     BSP_LCD_SetTextColor(paddle->color);
     BSP_LCD_FillRect(paddle->pos.x, paddle->pos.y, paddle->width, paddle->height);
+}
+
+int check_collision(const ball_t* ball, const paddle_t* paddle)
+{
+    float ball_x = abs(ball->pos.x - paddle->pos.x - (paddle->width / 2));
+    float x_dist = ((float) paddle->width / 2) + ball->radius;
+
+    if (ball_x > x_dist)
+        return 0;
+
+    float ball_y = abs(ball->pos.y - paddle->pos.y - (paddle->height / 2));
+    float y_dist = ((float) paddle->height / 2) + ball->radius;
+    if (ball_y > y_dist)
+        return 0;
+    if (ball_x <= ((float) paddle->width / 2) || ball_y <= ((float) paddle->height / 2))
+        return 1;
+
+    float xCornerDist = ball_x - ((float) paddle->width / 2);
+    float yCornerDist = ball_y - ((float) paddle->height / 2);
+    float xCornerDistSq = xCornerDist * xCornerDist;
+    float yCornerDistSq = yCornerDist * yCornerDist;
+    float maxCornerDistSq = ball->radius * ball->radius;
+    return (xCornerDistSq + yCornerDistSq) <= maxCornerDistSq;
 }
