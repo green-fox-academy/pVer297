@@ -38,6 +38,9 @@ typedef struct
 uint32_t screen_width;
 uint32_t screen_height;
 
+paddle_t left_paddle;
+paddle_t right_paddle;
+
 RNG_HandleTypeDef randomNumber;
 
 void init_lcd();
@@ -45,7 +48,7 @@ void init_rng();
 
 void draw_divider();
 void draw_ball(const ball_t* ball);
-void draw_paddle(const paddle_t* paddle);
+void draw_paddle(paddle_t* paddle);
 
 void limit_ball(ball_t* ball);
 void move_ball(ball_t* ball);
@@ -63,11 +66,13 @@ int main(void)
     HAL_Init();
     SystemClock_Config();
     init_lcd();
+    BSP_TS_Init(FT5336_MAX_WIDTH, FT5336_MAX_HEIGHT);
+    BSP_TS_ITConfig();
     init_rng();
 
     ball_t Ball = create_ball(screen_width / 2, screen_height / 2, 5, 5, 7, LCD_COLOR_BLACK);
-    paddle_t left_paddle = create_paddle(10, screen_height / 2 - 25, 4, 7, 75, LCD_COLOR_BLACK);
-    paddle_t right_paddle = create_paddle(screen_width - 10 - 7, screen_height / 2 - 25, 4, 7, 75, LCD_COLOR_BLACK);
+    left_paddle = create_paddle(10, screen_height / 2 - 40, 4, 7, 80, LCD_COLOR_BLACK);
+    right_paddle = create_paddle(screen_width - 10 - 7, screen_height / 2 - 40, 4, 7, 80, LCD_COLOR_BLACK);
 
     reset_ball(&Ball);
     while (1) {
@@ -88,6 +93,33 @@ int main(void)
         draw_paddle(&left_paddle);
         draw_paddle(&right_paddle);
         HAL_Delay(40);
+    }
+}
+
+void EXTI15_10_IRQHandler()
+{
+    HAL_GPIO_EXTI_IRQHandler(TS_INT_PIN);
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == TS_INT_PIN) {
+        TS_StateTypeDef Touch;
+        BSP_TS_GetState(&Touch);
+        for (int i = 0; i < Touch.touchDetected; i++) {
+            if (Touch.touchX[i] > (FT5336_MAX_WIDTH * 0.75)
+                && Touch.touchY[i] > right_paddle.height / 2
+                && Touch.touchY[i] < screen_height - right_paddle.height / 2) {
+
+                right_paddle.pos.y = Touch.touchY[i] - (uint16_t) (right_paddle.height / 2);
+
+            } else if (Touch.touchX[i] < (FT5336_MAX_WIDTH * 0.25)
+                && Touch.touchY[i] > left_paddle.height / 2
+                && Touch.touchY[i] < screen_height - left_paddle.height / 2) {
+
+                left_paddle.pos.y = Touch.touchY[i] - (uint16_t) (left_paddle.height / 2);
+            }
+        }
     }
 }
 
@@ -201,7 +233,7 @@ paddle_t create_paddle(uint16_t x_pos, uint16_t y_pos, int speed, uint16_t width
     return paddle;
 }
 
-void draw_paddle(const paddle_t* paddle)
+void draw_paddle(paddle_t* paddle)
 {
     BSP_LCD_SetTextColor(paddle->color);
     BSP_LCD_FillRect(paddle->pos.x, paddle->pos.y, paddle->width, paddle->height);
