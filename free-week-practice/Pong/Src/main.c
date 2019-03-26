@@ -27,23 +27,31 @@ typedef struct
 
 uint32_t screen_width;
 uint32_t screen_height;
+
+RNG_HandleTypeDef randomNumber;
+
 ball_t Ball = {{20, 20}, {5, 5}, 10, LCD_COLOR_BLACK};
 
 void init_lcd();
+void init_rng();
+
 void draw_divider();
 void draw_ball(const ball_t* ball);
+
 void limit_ball(ball_t* ball);
 void move_ball(ball_t* ball);
+void reset_ball(ball_t* ball);
+
+int get_random_speed();
 
 int main(void)
 {
     HAL_Init();
     SystemClock_Config();
     init_lcd();
+    init_rng();
 
-    BSP_LCD_SetTextColor(LCD_COLOR_RED);
-    BSP_LCD_FillCircle(50, 50, 30);
-
+    reset_ball(&Ball);
     while (1) {
         BSP_LCD_Clear(LCD_COLOR_WHITE);
         draw_divider();
@@ -72,9 +80,9 @@ void draw_divider()
     uint32_t div_color = LCD_COLOR_BLACK;
     uint16_t div_width = 6;
     uint16_t div_height = 30;
-    for (int i = 1; i <= screen_height - div_height; i += div_height) {
+    for (uint16_t i = 1; i <= screen_height - div_height; i += div_height) {
         BSP_LCD_SetTextColor(div_color);
-        BSP_LCD_FillRect((screen_width / 2) - (div_width / 2), i, div_width, div_height);
+        BSP_LCD_FillRect((uint16_t) ((screen_width / 2) - (div_width / 2)), i, div_width, div_height);
         div_color ^= 0x00FFFFFF;
     }
 }
@@ -95,19 +103,44 @@ void move_ball(ball_t* ball)
 
 void limit_ball(ball_t* ball)
 {
-    if (ball->pos.x <= 0 + ball->radius) {
-        ball->pos.x = ball->radius;
-        ball->speed.x_speed = -ball->speed.x_speed;
-    } else if (ball->pos.x >= screen_width - ball->radius) {
-        ball->pos.x = screen_width - ball->radius;
-        ball->speed.x_speed = -ball->speed.x_speed;
-    }
-
     if (ball->pos.y <= 0 + ball->radius) {
         ball->pos.y = ball->radius;
         ball->speed.y_speed = -ball->speed.y_speed;
     } else if (ball->pos.y >= screen_height - ball->radius) {
-        ball->pos.y = screen_height - ball->radius;
+        ball->pos.y = (uint16_t) screen_height - ball->radius;
         ball->speed.y_speed = -ball->speed.y_speed;
     }
+
+    if (ball->pos.x <= 0 + ball->radius) { //left side out, right player wins
+        reset_ball(ball);
+    } else if (ball->pos.x >= screen_width - ball->radius) { //right side out, left player wins
+        reset_ball(ball);
+    }
+}
+
+void reset_ball(ball_t* ball)
+{
+    ball->pos.x = (uint16_t) (screen_width / 2);
+    ball->pos.y = (uint16_t) (screen_height / 2);
+
+    ball->speed.x_speed = 5 * get_random_speed();
+    ball->speed.y_speed = 5 * get_random_speed();
+}
+
+int get_random_speed()
+{
+    int random = (int) HAL_RNG_GetRandomNumber(&randomNumber) % 2;
+
+    if (random == 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+void init_rng()
+{
+    randomNumber.Instance = RNG;
+    __HAL_RCC_RNG_CLK_ENABLE();
+    HAL_RNG_Init(&randomNumber);
 }
