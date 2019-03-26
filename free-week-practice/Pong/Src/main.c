@@ -29,7 +29,7 @@ typedef struct
 typedef struct
 {
     point_t pos;
-    int speed;
+    int score;
     uint16_t width;
     uint16_t height;
     uint32_t color;
@@ -41,14 +41,19 @@ uint32_t screen_height;
 paddle_t left_paddle;
 paddle_t right_paddle;
 
+uint8_t refresh_flag = 1;
+
 RNG_HandleTypeDef randomNumber;
+TIM_HandleTypeDef timer;
 
 void init_lcd();
 void init_rng();
+void init_timer();
 
 void draw_divider();
 void draw_ball(const ball_t* ball);
 void draw_paddle(paddle_t* paddle);
+void draw_scores();
 
 void limit_ball(ball_t* ball);
 void move_ball(ball_t* ball);
@@ -57,7 +62,7 @@ void reset_ball(ball_t* ball);
 int check_collision(const ball_t* ball, const paddle_t* paddle);
 
 ball_t create_ball(uint16_t x_pos, uint16_t y_pos, int x_speed, int y_speed, uint8_t radius, uint32_t color);
-paddle_t create_paddle(uint16_t x_pos, uint16_t y_pos, int speed, uint16_t width, uint16_t height, uint32_t color);
+paddle_t create_paddle(uint16_t x_pos, uint16_t y_pos, uint16_t width, uint16_t height, uint32_t color);
 
 int get_random_speed();
 
@@ -69,31 +74,49 @@ int main(void)
     BSP_TS_Init(FT5336_MAX_WIDTH, FT5336_MAX_HEIGHT);
     BSP_TS_ITConfig();
     init_rng();
+    init_timer();
 
     ball_t Ball = create_ball(screen_width / 2, screen_height / 2, 5, 5, 7, LCD_COLOR_BLACK);
-    left_paddle = create_paddle(10, screen_height / 2 - 40, 4, 7, 80, LCD_COLOR_BLACK);
-    right_paddle = create_paddle(screen_width - 10 - 7, screen_height / 2 - 40, 4, 7, 80, LCD_COLOR_BLACK);
+    left_paddle = create_paddle(10, screen_height / 2 - 40, 7, 80, LCD_COLOR_BLACK);
+    right_paddle = create_paddle(screen_width - 10 - 7, screen_height / 2 - 40, 7, 80, LCD_COLOR_BLACK);
 
     reset_ball(&Ball);
     while (1) {
-        BSP_LCD_Clear(LCD_COLOR_WHITE);
-        draw_divider();
-        move_ball(&Ball);
 
-        if (Ball.speed.x_speed > 0) {
-            if (check_collision(&Ball, &right_paddle))
-                Ball.speed.x_speed = -Ball.speed.x_speed;
-        } else {
-            if (check_collision(&Ball, &left_paddle))
-                Ball.speed.x_speed = -Ball.speed.x_speed;
+        if (refresh_flag == 1) {
+            BSP_LCD_Clear(LCD_COLOR_WHITE);
+            draw_scores();
+            draw_divider();
+            move_ball(&Ball);
+
+            if (Ball.speed.x_speed > 0) {
+                if (check_collision(&Ball, &right_paddle))
+                    Ball.speed.x_speed = -Ball.speed.x_speed;
+            } else {
+                if (check_collision(&Ball, &left_paddle))
+                    Ball.speed.x_speed = -Ball.speed.x_speed;
+            }
+
+            draw_ball(&Ball);
+
+            draw_paddle(&left_paddle);
+            draw_paddle(&right_paddle);
+            refresh_flag = 0;
         }
-
-        draw_ball(&Ball);
-
-        draw_paddle(&left_paddle);
-        draw_paddle(&right_paddle);
-        HAL_Delay(40);
     }
+}
+
+void draw_scores()
+{
+    char left[20];
+    sprintf(left, "Left: %d", left_paddle.score);
+
+    char right[20];
+    sprintf(right, "Right: %d", right_paddle.score);
+
+    BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+    BSP_LCD_DisplayStringAt(5, 5, left, LEFT_MODE);
+    BSP_LCD_DisplayStringAt(5, 5, right, RIGHT_MODE);
 }
 
 void EXTI15_10_IRQHandler()
@@ -120,6 +143,18 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
                 left_paddle.pos.y = Touch.touchY[i] - (uint16_t) (left_paddle.height / 2);
             }
         }
+    }
+}
+
+void TIM2_IRQHandler()
+{
+    HAL_TIM_IRQHandler(&timer);
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+{
+    if (htim->Instance == TIM2) {
+        refresh_flag = 1;
     }
 }
 
@@ -174,8 +209,10 @@ void limit_ball(ball_t* ball)
     }
 
     if (ball->pos.x <= 0 + ball->radius) { //left side out, right player wins
+        right_paddle.score++;
         reset_ball(ball);
     } else if (ball->pos.x >= screen_width - ball->radius) { //right side out, left player wins
+        left_paddle.score++;
         reset_ball(ball);
     }
 }
@@ -220,12 +257,12 @@ ball_t create_ball(uint16_t x_pos, uint16_t y_pos, int x_speed, int y_speed, uin
     return ball;
 }
 
-paddle_t create_paddle(uint16_t x_pos, uint16_t y_pos, int speed, uint16_t width, uint16_t height, uint32_t color)
+paddle_t create_paddle(uint16_t x_pos, uint16_t y_pos, uint16_t width, uint16_t height, uint32_t color)
 {
     paddle_t paddle;
     paddle.pos.x = x_pos;
     paddle.pos.y = y_pos;
-    paddle.speed = speed;
+    paddle.score = 0;
     paddle.width = width;
     paddle.height = height;
     paddle.color = color;
@@ -260,4 +297,22 @@ int check_collision(const ball_t* ball, const paddle_t* paddle)
     float yCornerDistSq = yCornerDist * yCornerDist;
     float maxCornerDistSq = ball->radius * ball->radius;
     return (xCornerDistSq + yCornerDistSq) <= maxCornerDistSq;
+}
+
+void init_timer()
+{
+    __HAL_RCC_TIM2_CLK_ENABLE();
+    timer.Instance = TIM2;
+    timer.Init.Prescaler = 1080 - 1; //54000 -> 0.5ms | 10800 -> 0.1ms
+    timer.Init.Period = 4000 - 1; //12000 * 0.5ms = 6s | 2000 = 1s
+    timer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    timer.Init.CounterMode = TIM_COUNTERMODE_UP;
+
+    HAL_TIM_Base_Init(&timer);
+
+    HAL_NVIC_SetPriority(TIM2_IRQn, 4, 0);
+
+    HAL_NVIC_EnableIRQ(TIM2_IRQn);
+
+    HAL_TIM_Base_Start_IT(&timer);
 }
