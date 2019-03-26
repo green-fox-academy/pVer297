@@ -25,22 +25,33 @@ typedef struct
     uint32_t color;
 } ball_t;
 
+typedef struct
+{
+    point_t pos;
+    int speed;
+    uint16_t width;
+    uint16_t height;
+    uint32_t color;
+} paddle_t;
+
 uint32_t screen_width;
 uint32_t screen_height;
 
 RNG_HandleTypeDef randomNumber;
-
-ball_t Ball = {{20, 20}, {5, 5}, 10, LCD_COLOR_BLACK};
 
 void init_lcd();
 void init_rng();
 
 void draw_divider();
 void draw_ball(const ball_t* ball);
+void draw_paddle(const paddle_t* paddle);
 
 void limit_ball(ball_t* ball);
 void move_ball(ball_t* ball);
 void reset_ball(ball_t* ball);
+
+ball_t create_ball(uint16_t x_pos, uint16_t y_pos, int x_speed, int y_speed, uint8_t radius, uint32_t color);
+paddle_t create_paddle(uint16_t x_pos, uint16_t y_pos, int speed, uint16_t width, uint16_t height, uint32_t color);
 
 int get_random_speed();
 
@@ -51,12 +62,19 @@ int main(void)
     init_lcd();
     init_rng();
 
+    ball_t Ball = create_ball(screen_width / 2, screen_height / 2, 5, 5, 7, LCD_COLOR_BLACK);
+    paddle_t left_paddle = create_paddle(5, screen_height / 2 - 25, 4, 10, 50, LCD_COLOR_BLACK);
+    paddle_t right_paddle = create_paddle(screen_width - 15, screen_height / 2 - 25, 4, 10, 50, LCD_COLOR_BLACK);
+
     reset_ball(&Ball);
     while (1) {
         BSP_LCD_Clear(LCD_COLOR_WHITE);
         draw_divider();
         move_ball(&Ball);
         draw_ball(&Ball);
+
+        draw_paddle(&left_paddle);
+        draw_paddle(&right_paddle);
         HAL_Delay(40);
     }
 }
@@ -123,8 +141,8 @@ void reset_ball(ball_t* ball)
     ball->pos.x = (uint16_t) (screen_width / 2);
     ball->pos.y = (uint16_t) (screen_height / 2);
 
-    ball->speed.x_speed = 5 * get_random_speed();
-    ball->speed.y_speed = 5 * get_random_speed();
+    ball->speed.x_speed = ball->speed.x_speed * get_random_speed();
+    ball->speed.y_speed = ball->speed.y_speed * get_random_speed();
 }
 
 int get_random_speed()
@@ -143,4 +161,36 @@ void init_rng()
     randomNumber.Instance = RNG;
     __HAL_RCC_RNG_CLK_ENABLE();
     HAL_RNG_Init(&randomNumber);
+}
+
+ball_t create_ball(uint16_t x_pos, uint16_t y_pos, int x_speed, int y_speed, uint8_t radius, uint32_t color)
+{
+    ball_t ball;
+    ball.pos.x = x_pos;
+    ball.pos.y = y_pos;
+    ball.speed.x_speed = x_speed;
+    ball.speed.y_speed = y_speed;
+    ball.radius = radius;
+    ball.color = color;
+
+    return ball;
+}
+
+paddle_t create_paddle(uint16_t x_pos, uint16_t y_pos, int speed, uint16_t width, uint16_t height, uint32_t color)
+{
+    paddle_t paddle;
+    paddle.pos.x = x_pos;
+    paddle.pos.y = y_pos;
+    paddle.speed = speed;
+    paddle.width = width;
+    paddle.height = height;
+    paddle.color = color;
+
+    return paddle;
+}
+
+void draw_paddle(const paddle_t* paddle)
+{
+    BSP_LCD_SetTextColor(paddle->color);
+    BSP_LCD_FillRect(paddle->pos.x, paddle->pos.y, paddle->width, paddle->height);
 }
