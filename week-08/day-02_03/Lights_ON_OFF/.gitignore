@@ -1,0 +1,5 @@
+.mxproject
+CMakeLists_template.txt
+Inc/stm32*
+Src/stm32*
+Src/system_*
