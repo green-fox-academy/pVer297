@@ -6,7 +6,7 @@
 #include "stm32746g_discovery_ts.h"
 #include "stm32746g_discovery_lcd.h"
 
-#define FRAMERATE 60
+#define FRAMERATE 30
 
 typedef struct
 {
@@ -47,13 +47,21 @@ uint32_t screen_width;
 uint32_t screen_height;
 screen_t Screen;
 
+volatile uint8_t refresh_flag = 1;
+volatile uint8_t touch_flag = 0;
+
 paddle_t left_paddle;
 paddle_t right_paddle;
 
 RNG_HandleTypeDef randomNumber;
+TIM_HandleTypeDef timer;
+
+long frames = 0;
+long last_poll_time = 0;
 
 void init_lcd();
 void init_rng();
+void init_timer();
 
 void draw_divider();
 void draw_ball(const ball_t* ball);
@@ -93,6 +101,7 @@ int main(void)
     BSP_TS_Init(FT5336_MAX_WIDTH, FT5336_MAX_HEIGHT);
     BSP_TS_ITConfig();
     init_rng();
+    init_timer();
 
     ball_t Ball = create_ball(screen_width / 2, screen_height / 2, 5, 5, 7, LCD_COLOR_BLACK);
     left_paddle = create_paddle(10, screen_height / 2 - 40, 7, 80, LCD_COLOR_BLACK);
@@ -100,31 +109,57 @@ int main(void)
 
     reset_ball(&Ball);
     while (1) {
-        switch_buffer(&Screen);
-        BSP_LCD_Clear(LCD_COLOR_WHITE);
-        draw_scores();
-        draw_divider();
-        move_ball(&Ball);
+        if (touch_flag) {
+            TS_StateTypeDef Touch;
+            BSP_TS_GetState(&Touch);
+            for (int i = 0; i < Touch.touchDetected; i++) {
+                if (Touch.touchX[i] > (FT5336_MAX_WIDTH * 0.75)
+                    && Touch.touchY[i] > right_paddle.height / 2
+                    && Touch.touchY[i] < screen_height - right_paddle.height / 2) {
 
-        if (Ball.speed.x_speed > 0) {
-            if (check_collision(&Ball, &right_paddle)) {
-                Ball.speed.x_speed = -Ball.speed.x_speed;
-                int hit_multiplier = (int) lerp(Ball.pos.y - right_paddle.pos.y, 0, right_paddle.height, -5, 5);
-                Ball.speed.y_speed = abs(hit_multiplier) * get_sign(Ball.speed.y_speed);
+                    right_paddle.pos.y = Touch.touchY[i] - (uint16_t) (right_paddle.height / 2);
+
+                } else if (Touch.touchX[i] < (FT5336_MAX_WIDTH * 0.25)
+                    && Touch.touchY[i] > left_paddle.height / 2
+                    && Touch.touchY[i] < screen_height - left_paddle.height / 2) {
+
+                    left_paddle.pos.y = Touch.touchY[i] - (uint16_t) (left_paddle.height / 2);
+                }
             }
-        } else {
-            if (check_collision(&Ball, &left_paddle)) {
-                Ball.speed.x_speed = -Ball.speed.x_speed;
-                int hit_multiplier = (int) lerp(Ball.pos.y - left_paddle.pos.y, 0, left_paddle.height, -5, 5);
-                Ball.speed.y_speed = abs(hit_multiplier) * get_sign(Ball.speed.y_speed);
+            touch_flag = 0;
+        }
+        if (refresh_flag) {
+            switch_buffer(&Screen);
+            BSP_LCD_Clear(LCD_COLOR_WHITE);
+            draw_scores();
+            draw_divider();
+            move_ball(&Ball);
+
+            if (Ball.speed.x_speed > 0) {
+                if (check_collision(&Ball, &right_paddle)) {
+                    Ball.speed.x_speed = -Ball.speed.x_speed;
+                    int hit_multiplier = (int) lerp(Ball.pos.y - right_paddle.pos.y, 0, right_paddle.height, -5, 5);
+                    Ball.speed.y_speed = abs(hit_multiplier) * get_sign(Ball.speed.y_speed);
+                }
+            } else {
+                if (check_collision(&Ball, &left_paddle)) {
+                    Ball.speed.x_speed = -Ball.speed.x_speed;
+                    int hit_multiplier = (int) lerp(Ball.pos.y - left_paddle.pos.y, 0, left_paddle.height, -5, 5);
+                    Ball.speed.y_speed = abs(hit_multiplier) * get_sign(Ball.speed.y_speed);
+                }
+            }
+
+            draw_ball(&Ball);
+
+            draw_paddle(&left_paddle);
+            draw_paddle(&right_paddle);
+            refresh_flag = 0;
+            frames++;
+            if (frames > 1000) {
+                frames = 0;
+                last_poll_time = HAL_GetTick();
             }
         }
-
-        draw_ball(&Ball);
-
-        draw_paddle(&left_paddle);
-        draw_paddle(&right_paddle);
-        HAL_Delay(1000 / FRAMERATE);
     }
 }
 
@@ -145,9 +180,15 @@ void draw_scores()
     char right[20];
     sprintf(right, "Right: %d", right_paddle.score);
 
+    char fps[10];
+    sprintf(fps, "FPS: %.3f", (float) frames / ((float) (HAL_GetTick() - last_poll_time) / 1000));
+
     BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+    BSP_LCD_SetFont(&Font24);
     BSP_LCD_DisplayStringAt(5, 5, left, LEFT_MODE);
     BSP_LCD_DisplayStringAt(5, 5, right, RIGHT_MODE);
+    BSP_LCD_SetFont(&Font16);
+    BSP_LCD_DisplayStringAt(0, screen_height - Font16.Height, fps, LEFT_MODE);
 }
 
 void EXTI15_10_IRQHandler()
@@ -157,23 +198,20 @@ void EXTI15_10_IRQHandler()
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if (GPIO_Pin == TS_INT_PIN) {
-        TS_StateTypeDef Touch;
-        BSP_TS_GetState(&Touch);
-        for (int i = 0; i < Touch.touchDetected; i++) {
-            if (Touch.touchX[i] > (FT5336_MAX_WIDTH * 0.75)
-                && Touch.touchY[i] > right_paddle.height / 2
-                && Touch.touchY[i] < screen_height - right_paddle.height / 2) {
+    if (GPIO_Pin == TS_INT_PIN && !refresh_flag) {
+        touch_flag = 1;
+    }
+}
 
-                right_paddle.pos.y = Touch.touchY[i] - (uint16_t) (right_paddle.height / 2);
+void TIM2_IRQHandler()
+{
+    HAL_TIM_IRQHandler(&timer);
+}
 
-            } else if (Touch.touchX[i] < (FT5336_MAX_WIDTH * 0.25)
-                && Touch.touchY[i] > left_paddle.height / 2
-                && Touch.touchY[i] < screen_height - left_paddle.height / 2) {
-
-                left_paddle.pos.y = Touch.touchY[i] - (uint16_t) (left_paddle.height / 2);
-            }
-        }
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+{
+    if (htim->Instance == TIM2) {
+        refresh_flag = 1;
     }
 }
 
@@ -320,4 +358,22 @@ int check_collision(const ball_t* ball, const paddle_t* paddle)
     float yCornerDistSq = yCornerDist * yCornerDist;
     float maxCornerDistSq = ball->radius * ball->radius;
     return (xCornerDistSq + yCornerDistSq) <= maxCornerDistSq;
+}
+
+void init_timer()
+{
+    __HAL_RCC_TIM2_CLK_ENABLE();
+    timer.Instance = TIM2;
+    timer.Init.Prescaler = 1080 - 1; //54000 -> 0.5ms | 10800 -> 0.1ms
+    timer.Init.Period = (uint32_t) ((1000.0 / FRAMERATE) * 100) - 1; //12000 * 0.5ms = 6s | 2000 = 1s
+    timer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    timer.Init.CounterMode = TIM_COUNTERMODE_UP;
+
+    HAL_TIM_Base_Init(&timer);
+
+    HAL_NVIC_SetPriority(TIM2_IRQn, 4, 0);
+
+    HAL_NVIC_EnableIRQ(TIM2_IRQn);
+
+    HAL_TIM_Base_Start_IT(&timer);
 }
