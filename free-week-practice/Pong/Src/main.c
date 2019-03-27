@@ -72,6 +72,18 @@ ball_t create_ball(uint16_t x_pos, uint16_t y_pos, int x_speed, int y_speed, uin
 paddle_t create_paddle(uint16_t x_pos, uint16_t y_pos, uint16_t width, uint16_t height, uint32_t color);
 
 int get_random_speed();
+int get_sign(int number)
+{
+    if (number >= 0)
+        return 1;
+    else
+        return -1;
+}
+
+double lerp(double numToMap, double numMinVal, double numMaxVal, double targetMinVal, double targetMaxVal)
+{
+    return ((((numToMap - numMinVal) * (targetMaxVal - targetMinVal)) / (numMaxVal - numMinVal)) + targetMinVal);
+}
 
 int main(void)
 {
@@ -95,11 +107,17 @@ int main(void)
         move_ball(&Ball);
 
         if (Ball.speed.x_speed > 0) {
-            if (check_collision(&Ball, &right_paddle))
+            if (check_collision(&Ball, &right_paddle)) {
                 Ball.speed.x_speed = -Ball.speed.x_speed;
+                int hit_multiplier = (int) lerp(Ball.pos.y - right_paddle.pos.y, 0, right_paddle.height, -5, 5);
+                Ball.speed.y_speed = abs(hit_multiplier) * get_sign(Ball.speed.y_speed);
+            }
         } else {
-            if (check_collision(&Ball, &left_paddle))
+            if (check_collision(&Ball, &left_paddle)) {
                 Ball.speed.x_speed = -Ball.speed.x_speed;
+                int hit_multiplier = (int) lerp(Ball.pos.y - left_paddle.pos.y, 0, left_paddle.height, -5, 5);
+                Ball.speed.y_speed = abs(hit_multiplier) * get_sign(Ball.speed.y_speed);
+            }
         }
 
         draw_ball(&Ball);
@@ -227,8 +245,8 @@ void reset_ball(ball_t* ball)
     ball->pos.x = (uint16_t) (screen_width / 2);
     ball->pos.y = (uint16_t) (screen_height / 2);
 
-    ball->speed.x_speed = ball->speed.x_speed * get_random_speed();
-    ball->speed.y_speed = ball->speed.y_speed * get_random_speed();
+    ball->speed.x_speed = 5 * get_random_speed();
+    ball->speed.y_speed = 5 * get_random_speed();
 }
 
 int get_random_speed()
