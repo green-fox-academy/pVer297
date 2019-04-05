@@ -10,14 +10,25 @@
 #define CLOCK_SPEED 108000000
 
 #define P_CONTROL_CONST 0.1
-#define PI_P_CONTROL_CONST 0.05
-#define PI_I_CONTROL_CONST 0.01
+#define PI_P_CONTROL_CONST 0.01
+#define PI_I_CONTROL_CONST 0.005
 #define CTRL_MIN 0
 #define CTRL_MAX 100
+
+typedef enum
+{
+    UART_P,
+    UART_PI,
+    POT_P,
+    POT_PI
+} Control_state;
+#define NUM_OF_CONTROL_STATES 4
 
 //UART
 UART_HandleTypeDef uart_handle;
 //ADC
+GPIO_InitTypeDef adc_pin;
+ADC_HandleTypeDef adc_handle;
 //PWM TIMER
 TIM_HandleTypeDef pwm;
 GPIO_InitTypeDef pwm_pin;
@@ -25,54 +36,64 @@ GPIO_InitTypeDef pwm_pin;
 TIM_HandleTypeDef ic_timer;
 GPIO_InitTypeDef ic_pin;
 
-GPIO_InitTypeDef user_button;
-
 char current_char;
 char buffer[BUFFER_SIZE] = "";
 volatile int ellapsed_counter = 0;
 volatile uint32_t last_count = 0;
 volatile uint32_t RPM = 0;
 volatile int ref_rpm = 0;
-volatile int controller_state = 0;
+Control_state control_state = UART_P;
 
 int integral = 0;
 
 void init_uart();
 void init_pwm();
 void init_ic();
-void init_user_button();
+void init_adc();
 void uart_print_int(UART_HandleTypeDef* handle, int to_print);
 void uart_print_string(UART_HandleTypeDef* handle, const char* to_print);
 double p_controller(int ref, int engine_read);
 double pi_controller(int ref, int engine_read);
+char* state_to_string(Control_state state);
 
-double number_map(double numToMap, double numMinVal, double numMaxVal, double targetMinVal, double targetMaxVal)
+double lerp(double numToMap, double numMinVal, double numMaxVal, double targetMinVal, double targetMaxVal)
 {
-    return (((numToMap - numMinVal) * (targetMaxVal - targetMinVal)) / (numMaxVal - numMinVal)) + targetMinVal;
+    return ((((numToMap - numMinVal) * (targetMaxVal - targetMinVal)) / (numMaxVal - numMinVal)) + targetMinVal);
 }
 
 int main(void)
 {
     HAL_Init();
     SystemClock_Config();
+    init_adc();
     init_uart();
     HAL_UART_Receive_IT(&uart_handle, &current_char, 1);
     init_pwm();
     init_ic();
     BSP_PB_Init(BUTTON_KEY, BUTTON_MODE_EXTI);
     int counter = 0;
+
+    int pot_val = 0;
     while (1) {
-        if (controller_state == 0) {
+        HAL_ADC_Start(&adc_handle);
+
+        if (HAL_ADC_PollForConversion(&adc_handle, 10) == HAL_OK) {
+            pot_val = HAL_ADC_GetValue(&adc_handle);
+            pot_val = (int) lerp(pot_val, 0, 4095, 0, 5200);
+        }
+        if (control_state == UART_P) {
             __HAL_TIM_SET_COMPARE(&pwm, TIM_CHANNEL_1, p_controller(ref_rpm, RPM));
-        } else if (controller_state == 1) {
+        } else if (control_state == UART_PI) {
             __HAL_TIM_SET_COMPARE(&pwm, TIM_CHANNEL_1, pi_controller(ref_rpm, RPM));
+        } else if (control_state == POT_P) {
+            __HAL_TIM_SET_COMPARE(&pwm, TIM_CHANNEL_1, p_controller(pot_val, RPM));
+        } else if (control_state == POT_PI) {
+            __HAL_TIM_SET_COMPARE(&pwm, TIM_CHANNEL_1, pi_controller(pot_val, RPM));
         }
         if (counter >= 100) {
             uart_print_int(&uart_handle, RPM);
             uart_print_int(&uart_handle, __HAL_TIM_GET_COMPARE(&pwm, TIM_CHANNEL_1));
-            uart_print_string(&uart_handle, "State:");
-            uart_print_int(&uart_handle, controller_state);
-            uart_print_string(&uart_handle, "");
+            uart_print_string(&uart_handle, state_to_string(control_state));
             counter = 0;
         }
         RPM = 0;
@@ -97,6 +118,10 @@ double p_controller(int ref, int engine_read)
 
 double pi_controller(int ref, int engine_read)
 {
+    if (ref == 0) {
+        integral = 0;
+        return 0;
+    }
     int error = ref - engine_read;
     integral += error;
 
@@ -145,7 +170,7 @@ void init_pwm()
 
     HAL_TIM_PWM_DeInit(&pwm);
     pwm.Instance = TIM3;
-    pwm.Init.Prescaler = 108 - 1;
+    pwm.Init.Prescaler = 2160 - 1;
     pwm.Init.Period = 100 - 1;
     pwm.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     pwm.Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -203,19 +228,24 @@ void init_ic()
     HAL_TIM_IC_Start_IT(&ic_timer, TIM_CHANNEL_1);
 }
 
-void init_user_button()
+void init_adc()
 {
-    __HAL_RCC_GPIOI_CLK_ENABLE();
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    adc_pin.Mode = GPIO_MODE_ANALOG;
+    adc_pin.Pin = GPIO_PIN_0;
+    adc_pin.Speed = GPIO_SPEED_FAST;
+    adc_pin.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOA, &adc_pin);
 
-    user_button.Pin = GPIO_PIN_11;
-    user_button.Pull = GPIO_NOPULL;
-    user_button.Speed = GPIO_SPEED_FAST;
-    user_button.Mode = GPIO_MODE_IT_RISING; //generate interrupt on rising edge
+    __HAL_RCC_ADC3_CLK_ENABLE();
+    adc_handle.Instance = ADC3;
+    HAL_ADC_Init(&adc_handle);
 
-    HAL_GPIO_Init(GPIOI, &user_button);
+    ADC_ChannelConfTypeDef adc_channel_config;
 
-    HAL_NVIC_SetPriority(EXTI15_10_IRQn, 2, 0);
-    HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+    adc_channel_config.Channel = ADC_CHANNEL_0;
+    adc_channel_config.SamplingTime = ADC_SAMPLETIME_56CYCLES;
+    HAL_ADC_ConfigChannel(&adc_handle, &adc_channel_config);
 }
 
 void EXTI15_10_IRQHandler()
@@ -225,7 +255,7 @@ void EXTI15_10_IRQHandler()
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     if (GPIO_Pin == GPIO_PIN_11) {
-        controller_state = 1 - controller_state;
+        control_state = (control_state + 1) % NUM_OF_CONTROL_STATES;
     }
 }
 
@@ -267,7 +297,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart)
             if (strcmp(buffer, "") != 0) {
                 int rpm_val = strtol(buffer, NULL, 10);
                 if (rpm_val >= 0 && rpm_val <= 5200) {
-                    //__HAL_TIM_SET_COMPARE(&pwm, TIM_CHANNEL_1, pwm_value);
                     ref_rpm = rpm_val;
                 }
             }
@@ -290,4 +319,20 @@ void uart_print_string(UART_HandleTypeDef* handle, const char* to_print)
     strcpy(string, to_print);
     strcat(string, "\n\0");
     HAL_UART_Transmit(handle, string, strlen(string), 0xFFFF);
+}
+
+char* state_to_string(Control_state state)
+{
+    switch (state) {
+        case UART_P:
+            return "UART control. P controller";
+        case UART_PI:
+            return "UART control. PI controller";
+        case POT_P:
+            return "Pot control. P controller";
+        case POT_PI:
+            return "Pot control. PI controller";
+        default:
+            return "???";
+    }
 }
