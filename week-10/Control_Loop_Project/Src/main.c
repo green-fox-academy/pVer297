@@ -10,8 +10,8 @@
 #define CLOCK_SPEED 108000000
 
 #define P_CONTROL_CONST 0.1
-#define PI_P_CONTROL_CONST 0.01
-#define PI_I_CONTROL_CONST 0.005
+#define PI_P_CONTROL_CONST 0.1
+#define PI_I_CONTROL_CONST 0.05
 #define CTRL_MIN 0
 #define CTRL_MAX 100
 
@@ -42,7 +42,7 @@ volatile int ellapsed_counter = 0;
 volatile uint32_t last_count = 0;
 volatile uint32_t RPM = 0;
 volatile int ref_rpm = 0;
-Control_state control_state = UART_P;
+Control_state control_state = UART_PI;
 
 int integral = 0;
 
@@ -75,7 +75,7 @@ int main(void)
 
     int pot_val = 0;
     while (1) {
-        HAL_ADC_Start(&adc_handle);
+        /*HAL_ADC_Start(&adc_handle);
 
         if (HAL_ADC_PollForConversion(&adc_handle, 10) == HAL_OK) {
             pot_val = HAL_ADC_GetValue(&adc_handle);
@@ -89,11 +89,13 @@ int main(void)
             __HAL_TIM_SET_COMPARE(&pwm, TIM_CHANNEL_1, p_controller(pot_val, RPM));
         } else if (control_state == POT_PI) {
             __HAL_TIM_SET_COMPARE(&pwm, TIM_CHANNEL_1, pi_controller(pot_val, RPM));
-        }
-        if (counter >= 100) {
-            uart_print_int(&uart_handle, RPM);
-            uart_print_int(&uart_handle, __HAL_TIM_GET_COMPARE(&pwm, TIM_CHANNEL_1));
-            uart_print_string(&uart_handle, state_to_string(control_state));
+        }*/
+
+        __HAL_TIM_SET_COMPARE(&pwm, TIM_CHANNEL_1, pi_controller(ref_rpm, RPM));
+        if (counter >= 10) {
+            char string[50];
+            sprintf(string, "%d %d %d\n", ref_rpm, RPM, __HAL_TIM_GET_COMPARE(&pwm, TIM_CHANNEL_1));
+            HAL_UART_Transmit(&uart_handle, string, strlen(string), 0xFFFF);
             counter = 0;
         }
         RPM = 0;
